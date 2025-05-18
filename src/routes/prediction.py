@@ -1,21 +1,14 @@
 import os
 import sys
-# Adiciona o diretório raiz do projeto ao sys.path
-# Não altere esta configuração!!
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from flask import Flask, request, jsonify
 import joblib
 import pandas as pd
-import numpy as np # Adicionado para lidar com np.nan se necessário
+import numpy as np
 
-# Carregar o modelo treinado (Random Forest foi o melhor)
-# O modelo deve estar na raiz do projeto ou em um local acessível.
-# Para o deploy, o modelo será copiado para dentro do diretório da API.
+# Carregar o modelo
 MODEL_PATH = "./modeltraining/model_rf.joblib"
 
-# Tentar carregar o modelo. Se não encontrar, a API não funcionará corretamente.
 try:
     model = joblib.load(MODEL_PATH)
     print(f"Modelo carregado de {MODEL_PATH}")
@@ -26,13 +19,7 @@ except Exception as e:
     print(f"ERRO ao carregar o modelo de {MODEL_PATH}: {e}")
     model = None
 
-# Lista de features esperadas pelo modelo, na ordem correta
-# Esta lista deve ser exatamente a mesma usada durante o treinamento do ColumnTransformer
-# Ordem das colunas em X no script de treinamento:
-# ["vaga_nivel_ingles", "vaga_local_trabalho", "vaga_principais_atividades", "vaga_nivel profissional", 
-#  "vaga_competencia_tecnicas_e_comportamentais", "app_form_nivel_ingles", "app_prof_conhecimentos_tecnicos", 
-#  "app_prof_nivel_profissional", "vaga_nivel_academico", "vaga_nivel_espanhol", "app_form_nivel_espanhol", 
-#  "cv_pt", "vaga_vaga_especifica_para_pcd", "app_form_nivel_academico"]
+# Lista de features esperadas pelo modelo
 EXPECTED_FEATURES = [
     "cv_pt", # Text
     "vaga_principais_atividades", # Text
@@ -56,6 +43,7 @@ TEXT_FEATURES_FOR_PREDICTION = [
     "vaga_competencia_tecnicas_e_comportamentais", 
     "app_prof_conhecimentos_tecnicos"
 ]
+
 CATEGORICAL_FEATURES_FOR_PREDICTION = [
     "vaga_nivel profissional", "vaga_nivel_academico", "vaga_nivel_ingles", "vaga_nivel_espanhol",
     "vaga_local_trabalho", "vaga_vaga_especifica_para_pcd",
@@ -98,7 +86,7 @@ def create_prediction_route(app):
             # Iterar sobre cada linha de "applicants"
             for _, applicant_row in applicants.iterrows():
                 # Combinar os dados da vaga com os dados do candidato
-                combined_record = vaga_data.copy()  # Começa com os dados da vaga
+                combined_record = vaga_data.copy()
 
                 # Preencher os dados do candidato
                 for feature in applicants.columns:
@@ -111,7 +99,6 @@ def create_prediction_route(app):
             # Criar DataFrame de entrada
             input_df = pd.DataFrame(input_data, columns=EXPECTED_FEATURES)
 
-            # Aplicar fillna nas colunas
             for col in TEXT_FEATURES_FOR_PREDICTION:
                 input_df[col] = input_df[col].fillna("")
 
@@ -133,6 +120,7 @@ def create_prediction_route(app):
                     "probability_match": float(proba[1])
                 })
 
+            # Pegar os 5 maiores matches por probabilidade de Target = 1
             top_5_matches = sorted(results, key=lambda x: x["probability_match"], reverse=True)[:5]
 
             return jsonify(top_5_matches), 200
@@ -144,7 +132,4 @@ def create_prediction_route(app):
             return jsonify({"error": f"Erro interno do servidor durante a predição: {str(e)}"}), 500
 
     return app
-
-# Este arquivo não deve rodar a app diretamente se for parte de uma estrutura maior.
-# A app será criada e configurada em main.py
 

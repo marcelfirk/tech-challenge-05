@@ -2,11 +2,9 @@ import json
 import pandas as pd
 
 def load_json_to_df(file_path):
-    """Loads a JSON file into a pandas DataFrame."""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
-        # The JSONs are dictionaries with IDs as keys. We need to orient them correctly.
         df = pd.DataFrame.from_dict(data, orient='index')
         df.index.name = 'ID'
         df = df.reset_index()
@@ -19,12 +17,10 @@ def load_json_to_df(file_path):
         return None
 
 def prepare_data():
-    """Loads, merges, and prepares the data for the ML pipeline."""
     print("Iniciando o carregamento dos dados...")
     vagas_df = load_json_to_df('../data/vagas.json')
     applicants_df = load_json_to_df('../data/applicants.json')
-    
-    # Load prospects.json and flatten it
+
     try:
         with open('../data/prospects.json', 'r', encoding='utf-8') as f:
             prospects_data = json.load(f)
@@ -41,7 +37,7 @@ def prepare_data():
 
     print("Arquivos JSON carregados.")
 
-    # Flatten prospects_data
+    # Achatar dados dos prospects
     prospects_list = []
     for vaga_id, data in prospects_data.items():
         for prospect_info in data.get('prospects', []):
@@ -56,14 +52,11 @@ def prepare_data():
 
     # Renomear colunas para merge
     vagas_df = vagas_df.rename(columns={'ID': 'ID_VAGA'})
-    # 'codigo_profissional' in applicants.json seems to be the applicant ID
     applicants_df = applicants_df.rename(columns={'ID': 'ID_APPLICANT_raw', 'infos_basicas': 'infos_basicas_applicant'})
-    # Extract 'codigo_profissional' from 'infos_basicas_applicant' dictionary
     if 'infos_basicas_applicant' in applicants_df.columns:
         applicants_df['ID_APPLICANT'] = applicants_df['infos_basicas_applicant'].apply(lambda x: x.get('codigo_profissional') if isinstance(x, dict) else None)
     else:
         print("Coluna 'infos_basicas_applicant' não encontrada em applicants_df após carregamento.")
-        # Attempt to use the index if 'codigo_profissional' is not found, assuming index is applicant ID
         if 'ID_APPLICANT_raw' in applicants_df.columns:
              applicants_df['ID_APPLICANT'] = applicants_df['ID_APPLICANT_raw']
         else:
@@ -74,8 +67,6 @@ def prepare_data():
     print(f"Colunas em vagas_df: {vagas_df.columns.tolist()}")
     print(f"Colunas em applicants_df: {applicants_df.columns.tolist()}")
     print(f"Colunas em prospects_flat_df: {prospects_flat_df.columns.tolist()}")
-
-    # Merge data
     print("Iniciando merge dos DataFrames...")
     # Merge prospects com vagas
     merged_df = pd.merge(prospects_flat_df, vagas_df, on='ID_VAGA', how='left')
@@ -84,9 +75,7 @@ def prepare_data():
     merged_df = pd.merge(merged_df, applicants_df, on='ID_APPLICANT', how='left')
     print(f"Tamanho após merge com applicants: {len(merged_df)} linhas.")
 
-    # Definir a variável alvo (target)
-    # Positivo: 'Contratado pela Decision', 'Aprovado', 'Proposta Aceita'
-    # Negativo: 'Não Aprovado pelo Requisitante', 'Não Aprovado pelo Cliente', 'Não Aprovado pelo RH', 'Recusado', 'Desistiu', 'Desistiu da Contratação'
+    # Definir target
     positive_status = ['Contratado pela Decision', 'Aprovado', 'Proposta Aceita', 'Contratado como Hunting', 'Documentação PJ', 'Documentação Cooperado', 'Documentação CLT']
     negative_status = ['Não Aprovado pelo Requisitante', 'Não Aprovado pelo Cliente', 'Não Aprovado pelo RH', 'Recusado', 'Desistiu', 'Desistiu da Contratação', 'Sem interesse nesta vaga']
 
@@ -94,7 +83,7 @@ def prepare_data():
         lambda x: 1 if x in positive_status else (0 if x in negative_status else pd.NA)
     )
     
-    # Remover linhas onde o target não pôde ser definido (status intermediários ou desconhecidos)
+    # Remover linhas onde o target for nulo
     initial_rows = len(merged_df)
     merged_df.dropna(subset=['target'], inplace=True)
     merged_df['target'] = merged_df['target'].astype(int)
@@ -104,9 +93,8 @@ def prepare_data():
     print(f"Distribuição da variável alvo:\n{merged_df['target'].value_counts(normalize=True)}")
 
     # Selecionar colunas relevantes para evitar sobrecarga de memória e focar no essencial
-    # Esta lista pode ser refinada posteriormente
-    cols_vagas = ['ID_VAGA', 'perfil_vaga'] # perfil_vaga é um dict
-    cols_applicants = ['ID_APPLICANT', 'informacoes_profissionais', 'formacao_e_idiomas', 'cv_pt'] # informacoes_profissionais e formacao_e_idiomas são dicts
+    cols_vagas = ['ID_VAGA', 'perfil_vaga']
+    cols_applicants = ['ID_APPLICANT', 'informacoes_profissionais', 'formacao_e_idiomas', 'cv_pt']
     
     # Expandir dicts em colunas separadas
     if 'perfil_vaga' in merged_df.columns:
@@ -132,12 +120,13 @@ def prepare_data():
             merged_df = pd.concat([merged_df.drop(columns=['formacao_e_idiomas']), form_idiomas_expanded], axis=1)
         except Exception as e:
             print(f"Erro ao normalizar 'formacao_e_idiomas': {e}")
-    # Salvar o DataFrame processado
+    # Salvar o DataFrame processado em pickle
     output_path = '../data/processed_data.pkl'
     merged_df.to_pickle(output_path)
     print(f"Dados processados e salvos em {output_path}")
     print(f"Shape do DataFrame salvo: {merged_df.shape}")
     print(f"Algumas colunas do DataFrame salvo: {merged_df.columns.tolist()[:20]}...")
+
 
 if __name__ == '__main__':
     prepare_data()

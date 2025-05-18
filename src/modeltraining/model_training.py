@@ -13,15 +13,11 @@ import numpy as np
 def train_model():
     print("Iniciando o treinamento do modelo...")
     try:
-        df = pd.read_pickle("/home/ubuntu/processed_data.pkl")
+        df = pd.read_pickle("../data/processed_data.pkl")
         print(f"DataFrame carregado com shape: {df.shape}")
     except Exception as e:
-        print(f"Erro ao carregar /home/ubuntu/processed_data.pkl: {e}")
+        print(f"Erro ao carregar ../data/processed_data.pkl: {e}")
         return
-
-    # Reduzir o dataset para testes iniciais e evitar problemas de memória/tempo
-    # df = df.sample(n=5000, random_state=42) if len(df) > 5000 else df
-    # print(f"Dataset reduzido para {len(df)} amostras para teste.")
 
     # Definir X e y
     if 'target' not in df.columns:
@@ -49,9 +45,8 @@ def train_model():
     # Identificar tipos de colunas para pré-processamento
     text_features = []
     categorical_features = []
-    numerical_features = [] # Não temos numéricas explícitas além do que será gerado por TF-IDF
 
-    # Colunas de texto principais (CV e descrição da vaga)
+    # Colunas de texto principais
     if 'cv_pt' in X.columns:
         text_features.append('cv_pt')
         X['cv_pt'] = X['cv_pt'].fillna('') # Preencher NaNs em colunas de texto
@@ -65,7 +60,7 @@ def train_model():
         text_features.append('app_prof_conhecimentos_tecnicos')
         X['app_prof_conhecimentos_tecnicos'] = X['app_prof_conhecimentos_tecnicos'].fillna('')
 
-    # Colunas categóricas (exemplos, adicionar mais conforme a análise)
+    # Colunas categóricas
     potential_cat_cols = [
         'vaga_nivel profissional', 'vaga_nivel_academico', 'vaga_nivel_ingles', 'vaga_nivel_espanhol',
         'vaga_areas_atuacao', 'vaga_local_trabalho', 'vaga_vaga_especifica_para_pcd',
@@ -78,10 +73,6 @@ def train_model():
             X[col] = X[col].fillna('Desconhecido').astype(str) # Preencher NaNs e garantir tipo string
             if X[col].nunique() < 50: # Limitar cardinalidade para OneHotEncoding
                  categorical_features.append(col)
-            # else: # Para alta cardinalidade, poderia usar Target Encoding ou Embedding, ou TF-IDF se for texto livre
-            #    print(f"Coluna {col} tem alta cardinalidade ({X[col].nunique()}) e será tratada como texto ou descartada.")
-            #    X[col] = X[col].fillna('') 
-            #    text_features.append(col) # Tratar como texto se alta cardinalidade
 
     print(f"Text features: {text_features}")
     print(f"Categorical features: {categorical_features}")
@@ -89,7 +80,7 @@ def train_model():
     # Manter apenas as colunas que serão usadas
     features_to_keep = list(set(text_features + categorical_features))
     if not features_to_keep:
-        print("Nenhuma feature selecionada para o modelo. Verifique a lógica de seleção.")
+        print("Nenhuma feature selecionada para o modelo.")
         return
     X = X[features_to_keep]
     print(f"Shape de X após seleção de features: {X.shape}")
@@ -114,14 +105,14 @@ def train_model():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42, stratify=y)
     print(f"Dados divididos: X_train: {X_train.shape}, X_test: {X_test.shape}")
 
-    # --- Modelo 1: Logistic Regression ---
-    print("\n--- Treinando Logistic Regression ---")
+    # Modelo 1: Logistic Regression
+    print("\nTreinando Logistic Regression")
     pipeline_lr = Pipeline([
         ('preprocessor', preprocessor),
         ('scaler', StandardScaler(with_mean=False)), # StandardScaler para dados esparsos
         ('classifier', LogisticRegression(solver='liblinear', random_state=42, class_weight='balanced', C=0.1))
     ])
-    
+
     try:
         pipeline_lr.fit(X_train, y_train)
         y_pred_lr = pipeline_lr.predict(X_test)
@@ -139,29 +130,16 @@ def train_model():
         import traceback
         traceback.print_exc()
 
-    # --- Modelo 2: Random Forest (mais robusto, mas pode ser mais lento) ---
-    print("\n--- Treinando Random Forest ---")
+    # Modelo 2: Random Forest
+    print("\nTreinando Random Forest")
     pipeline_rf = Pipeline([
         ('preprocessor', preprocessor),
-        # RandomForest não necessita de scaling, mas pode ser útil para consistência ou se outros modelos forem adicionados
-        # ('scaler', StandardScaler(with_mean=False)), 
         ('classifier', RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced', max_depth=10, n_jobs=-1))
     ])
 
-    # Parâmetros para GridSearchCV (opcional, para otimizar)
-    # param_grid_rf = {
-    #     'classifier__n_estimators': [50, 100],
-    #     'classifier__max_depth': [10, 20, None]
-    # }
-    # grid_search_rf = GridSearchCV(pipeline_rf, param_grid_rf, cv=2, scoring='roc_auc', verbose=1, n_jobs=-1)
-
     try:
-        # grid_search_rf.fit(X_train, y_train)
-        # print(f"Melhores parâmetros para Random Forest: {grid_search_rf.best_params_}")
-        # best_pipeline_rf = grid_search_rf.best_estimator_
-        
         pipeline_rf.fit(X_train, y_train)
-        best_pipeline_rf = pipeline_rf # Usar o pipeline treinado diretamente sem gridsearch por agora
+        best_pipeline_rf = pipeline_rf
 
         y_pred_rf = best_pipeline_rf.predict(X_test)
         y_proba_rf = best_pipeline_rf.predict_proba(X_test)[:, 1]
@@ -179,6 +157,7 @@ def train_model():
         traceback.print_exc()
 
     print("\nTreinamento e avaliação concluídos. Modelos salvos.")
+
 
 if __name__ == '__main__':
     train_model()
